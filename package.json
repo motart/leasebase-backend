@@ -1,0 +1,29 @@
+{
+  "name": "leasebase-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/mobile",
+    "services/api"
+  ],
+  "scripts": {
+    "dev": "docker-compose up -d db && npm run dev:api & npm run dev:web",
+    "dev:api": "cd services/api && npm run start:dev",
+    "dev:web": "cd apps/web && npm run dev",
+    "dev:mobile": "cd apps/mobile && npm start",
+    "build": "npm run build:api && npm run build:web",
+    "build:api": "cd services/api && npm run build",
+    "build:web": "cd apps/web && npm run build",
+    "test": "npm run test:api && npm run test:web",
+    "test:api": "cd services/api && npm test",
+    "test:web": "cd apps/web && npm test",
+    "lint": "npm run lint:api && npm run lint:web",
+    "lint:api": "cd services/api && npm run lint",
+    "lint:web": "cd apps/web && npm run lint",
+    "migrate": "cd services/api && npx prisma migrate deploy",
+    "seed": "cd services/api && npm run seed"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
