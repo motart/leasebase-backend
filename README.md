@@ -1,12 +1,15 @@
-# Leasebase Monorepo
+# Leasebase Backend Monorepo
 
 Real Estate Leasing platform for property managers, owners/landlords, and tenants.
 
-This repository is a TypeScript monorepo that contains:
+This repository is the **backend monorepo** for Leasebase. It contains:
 - The backend API (NestJS + Prisma + PostgreSQL)
-- The future web and mobile applications
-- Infrastructure and documentation
-- Multi‑agent tooling to help plan and execute changes across the stack
+- Shared backend infrastructure and documentation
+- Multi‑agent tooling to help plan and execute backend‑centric and cross‑repo changes
+
+**Frontend code (web and mobile)** lives in separate repositories:
+- `leasebase-web` – standalone web client
+- `leasebase-mobile` – standalone mobile client
 
 If you want to work on Leasebase locally or deploy the backend to AWS, this is the **source of truth**.
 
@@ -14,9 +17,10 @@ If you want to work on Leasebase locally or deploy the backend to AWS, this is t
 
 ## Repository layout
 
+This repo is intentionally **backend‑only**. Frontend projects live in their own repos (`leasebase-web`, `leasebase-mobile`).
+
 - `apps/`
-  - `apps/web/` – Web client (frontend will live here; currently a placeholder)
-  - `apps/mobile/` – Mobile client (mobile app will live here; currently a placeholder)
+  - Reserved for potential future backend apps/services (not frontends)
 - `services/`
   - `services/api/` – NestJS API using Prisma and PostgreSQL (the main backend service)
 - `infra/`
@@ -118,36 +122,48 @@ This runs NestJS from `services/api`, listening on:
 Swagger API docs are exposed at:
 - `http://localhost:4000/docs`
 
-### 6. Run the web client (when implemented)
+### 6. Frontend applications (separate repos)
 
-The monorepo is already wired for a web app at `apps/web`.
+This backend monorepo does **not** contain the web or mobile UI code.
 
-To start the web client (once it has been implemented):
+Frontend projects live in their own repositories:
+- `leasebase-web` – web client
+- `leasebase-mobile` – mobile client
 
-```bash path=null start=null
-npm run dev:web
-```
+Those repos are expected to talk to this backend API over HTTP (for example, `http://localhost:4000` in local development, or an AWS host in dev/stage/prod).
 
-### 7. Run the mobile app (when implemented)
+### 7. Run API and frontend together locally
 
-Similarly, the monorepo reserves `apps/mobile` for the mobile client. Once code is added there, you can run:
+A typical local workflow looks like:
 
-```bash path=null start=null
-npm run dev:mobile
-```
+1. From this repo, start Postgres and the API:
 
-### 8. Run API and web together
+   ```bash path=null start=null
+   # In ../leasebase (backend monorepo)
+   docker-compose up -d db
+   npm install
+   npm run migrate
+   npm run seed
+   npm run dev:api
+   ```
 
-For convenience you can start Postgres, API, and web (where web exists) from the root:
+2. From `../leasebase-web`, start the web client (once implemented):
 
-```bash path=null start=null
-npm run dev
-```
+   ```bash path=null start=null
+   cd ../leasebase-web
+   npm install
+   npm run dev
+   ```
 
-This will:
-- Ensure Postgres is running via Docker Compose
-- Start the API (`services/api`)
-- Start the web app (`apps/web`)
+3. From `../leasebase-mobile`, start the mobile client (once implemented):
+
+   ```bash path=null start=null
+   cd ../leasebase-mobile
+   npm install
+   npm start
+   ```
+
+The web and mobile apps should be configured to use the API base URL exposed by this backend (e.g., `http://localhost:4000`).
 
 ---
 
@@ -281,7 +297,7 @@ terraform apply -var-file=env/dev.tfvars
 
 The `multi_agent/` directory contains a generic multi-agent engine plus a Leasebase-specific CLI wrapper.
 
-From the monorepo root you can ask the multi-agent system to decompose and reason about tasks across web, mobile, and backend:
+From the backend monorepo root you can ask the multi-agent system to decompose and reason about tasks across backend, web, and mobile **as separate repos**:
 
 ```bash path=null start=null
 npm run multi-agent -- "Design the MVP tenant onboarding flow across web, mobile, and backend" --domain all
