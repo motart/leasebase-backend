@@ -24,7 +24,7 @@ This repo is intentionally **backend‑only**. Frontend projects live in their o
 - `services/`
   - `services/api/` – NestJS API using Prisma and PostgreSQL (the main backend service)
 - `infra/`
-  - `infra/terraform/` – Reserved for Terraform infrastructure-as-code (currently a skeleton; see architecture docs for the intended design)
+  - `infra/terraform/` – Terraform infrastructure-as-code for dev/QA/prod AWS accounts (VPC, RDS, ECS/Fargate API, ALB, S3+CloudFront for web)
 - `docs/`
   - `docs/architecture.md` – High-level system and domain architecture
 - `multi_agent/`
@@ -193,103 +193,111 @@ npm run lint:web
 
 ---
 
-## Backend deployment to AWS (API service)
+## Backend & web deployment to AWS (Terraform, per account)
 
 The backend API lives in `services/api` and uses:
 - NestJS (HTTP server)
 - Prisma (PostgreSQL ORM)
 - PostgreSQL (`DATABASE_URL`)
 
-There is currently **no fully wired Terraform or CI/CD pipeline** in this repo. The steps below describe a **straightforward manual deployment** path using EC2 + RDS, which you can later automate with Terraform under `infra/`.
+Infrastructure for the backend API **and** the web frontend (S3 + CloudFront) is managed via Terraform under:
 
-### 1. Create a PostgreSQL database (RDS)
+- `infra/terraform/envs/common` – shared stack for VPC, RDS, ECS/Fargate API, ALB, S3 + CloudFront
+- `infra/terraform/envs/dev` – dev account root module
+- `infra/terraform/envs/qa` – QA account root module
+- `infra/terraform/envs/prod` – production account root module
 
-In AWS:
+Each environment is expected to run in its **own AWS account**. You select the account via AWS credentials or `AWS_PROFILE` when running Terraform.
 
-1. Create an **RDS PostgreSQL** instance (e.g., `db.t3.micro` for dev):
-   - Engine: PostgreSQL 14+ (or similar)
-   - Public accessibility: for dev you may allow, but for prod prefer private subnets.
-2. Create a database user and database (e.g., `leasebase` / `leasebase`).
-3. Note the connection parameters and construct `DATABASE_URL`, for example:
+### 1. Overview of what Terraform creates
 
-```text path=null start=null
-postgresql://<USER>:<PASSWORD>@<RDS_ENDPOINT>:5432/<DB_NAME>?schema=public
-```
+For each environment (dev, QA, prod), Terraform provisions:
 
-### 2. Provision an EC2 instance for the API
+- Networking
+  - A VPC with environment-specific CIDR (e.g., `10.10.0.0/16` for dev, `10.20.0.0/16` for QA, `10.30.0.0/16` for prod)
+  - Two public subnets and an internet gateway
+- Database (backend)
+  - A PostgreSQL RDS instance (size and storage vary by env)
+- Backend API
+  - ECS Fargate cluster, task definition, and service
+  - Application Load Balancer (ALB) with HTTP listener and health checks
+- Web frontend
+  - S3 bucket for static assets
+  - CloudFront distribution in front of the S3 bucket
 
-1. Create an **EC2 instance** (e.g., Amazon Linux 2, t3.micro or larger) in the same VPC as RDS.
-2. Open a security group rule allowing inbound traffic on the API port (default `4000`), from:
-   - Your IP (for dev), or
-   - An Application Load Balancer (for prod).
-3. SSH into the instance and install runtime dependencies:
+The web and mobile repos then point at the appropriate API + web endpoints for each environment.
 
-```bash path=null start=null
-# Update packages
-sudo yum update -y
+### 2. Deploy dev environment
 
-# Install Node.js (use Node 18 or 20)
-# Example using nvm or Amazon Linux extras, depending on your base image
-
-# Install git
-sudo yum install -y git
-```
-
-### 3. Deploy the API code to EC2
-
-On the EC2 instance:
+From the backend repo:
 
 ```bash path=null start=null
-# Clone the repository
-git clone <your-git-url>/leasebase.git
-cd leasebase
+cd infra/terraform/envs/dev
 
-# Install dependencies
-npm install
+# Select the dev AWS account
+export AWS_PROFILE=leasebase-dev
 
-# Build the API
-cd services/api
-npm run build
-```
+# Required sensitive values (example: use tfvars or env vars in practice)
+export TF_VAR_db_password="<dev-db-password>"
+export TF_VAR_api_database_url="postgresql://leasebase:<dev-db-password>@<dev-rds-endpoint>:5432/leasebase_dev?schema=public"
 
-Create a `.env` file in `services/api` with at least:
+# Non-sensitive values
+export TF_VAR_api_container_image="<dev-api-ecr-uri>:latest"
+export TF_VAR_web_bucket_suffix="dev-<account-id-or-unique>"
 
-```bash path=null start=null
-DATABASE_URL="postgresql://<USER>:<PASSWORD>@<RDS_ENDPOINT>:5432/<DB_NAME>?schema=public"
-API_PORT=4000
-NODE_ENV=production
-```
-
-Then start the API:
-
-```bash path=null start=null
-npm start   # runs: node dist/main.js
-```
-
-For production, you should run this under a process manager such as **pm2** or a **systemd** service so that it restarts automatically.
-
-### 4. (Optional) Put an Application Load Balancer (ALB) in front
-
-For a more production-ready setup:
-
-1. Create an **Application Load Balancer** targeting the EC2 instance on port `4000`.
-2. Attach an **HTTPS listener** and ACM-managed certificate for your API domain (e.g., `api.yourdomain.com`).
-3. Restrict security groups so that the EC2 instance only accepts traffic from the ALB, not the entire internet.
-
-### 5. Future: Infrastructure as Code (Terraform)
-
-The `infra/terraform` directory is reserved for a Terraform-based implementation of the target architecture (VPC, ECS/Fargate or EC2, RDS, ALB, CloudFront, S3, Cognito, etc.), as described in `docs/architecture.md`.
-
-Once Terraform modules and variables are defined, the high-level flow will be:
-
-```bash path=null start=null
-cd infra/terraform
 terraform init
-terraform plan -var-file=env/dev.tfvars
-terraform apply -var-file=env/dev.tfvars
+terraform plan
+terraform apply
 ```
 
-(Those files and modules are **not yet committed**, so treat this as a roadmap, not a currently-working command.)
+After apply completes, Terraform outputs (among others):
+
+- `api_alb_dns_name` – base URL for the API in this environment
+- `web_cloudfront_domain` – CloudFront domain serving the web client
+
+Use these in `leasebase-web` and `leasebase-mobile` as the base URLs for dev.
+
+### 3. Deploy QA and production environments
+
+Repeat the same pattern in the QA and prod env folders, using the correct AWS account/profile and values:
+
+```bash path=null start=null
+# QA
+cd infra/terraform/envs/qa
+export AWS_PROFILE=leasebase-qa
+# Set TF_VAR_db_password, TF_VAR_api_database_url, TF_VAR_api_container_image, TF_VAR_web_bucket_suffix
+terraform init
+terraform apply
+
+# Production
+cd ../prod
+export AWS_PROFILE=leasebase-prod
+# Set TF_VAR_db_password, TF_VAR_api_database_url, TF_VAR_api_container_image, TF_VAR_web_bucket_suffix
+terraform init
+terraform apply
+```
+
+Environment-specific `variables.tf` files in each folder control sizes (RDS instance class, storage, ECS task counts) and can be tuned independently for dev, QA, and prod.
+
+### 4. Deploying new API/web versions
+
+Once the infrastructure is in place:
+
+- **Backend API:**
+  - Build and push a new Docker image for `services/api` to ECR.
+  - Update `TF_VAR_api_container_image` (or the corresponding value in your CI pipeline) and re-run `terraform apply`, or
+  - Use a deployment tool that updates the ECS service to point at the new task definition.
+
+- **Web frontend:**
+  - In `leasebase-web`, build the static site and sync it to the S3 bucket output by Terraform (for each env):
+
+    ```bash path=null start=null
+    # In ../leasebase-web
+    npm run build
+    aws s3 sync ./out s3://<web_bucket_name-from-terraform>/ --delete
+    ```
+
+  - The CloudFront distribution created by Terraform serves the updated assets; you can add cache invalidation as needed.
 
 ---
 
