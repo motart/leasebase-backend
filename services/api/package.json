@@ -33,6 +33,7 @@
     "pino": "^9.0.0",
     "pino-pretty": "^11.0.0",
     "prisma": "^6.0.0",
+    "jose": "^5.8.0",
     "reflect-metadata": "^0.2.2",
     "rimraf": "^5.0.0",
     "rxjs": "^7.8.0",

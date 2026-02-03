@@ -7,56 +7,109 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Organization {
-  id                 String        @id @default(cuid())
-  name               String
-  subdomain          String        @unique
-  stripeCustomerId   String?       @unique
-  stripeSubscriptionId String?     @unique
-  plan               String        @default("basic")
-  units              Int           @default(0)
-  users              User[]
-  properties         Property[]
-  leases             Lease[]
-  ledgerEntries      LedgerEntry[]
-  payments           Payment[]
-  workOrders         WorkOrder[]
-  documents          Document[]
-  auditLogs          AuditLog[]
-  subscription       Subscription?
-
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+enum OrganizationType {
+  LANDLORD
+  PM_COMPANY
 }
 
 enum UserRole {
+  ORG_ADMIN
+  PM_STAFF
   OWNER
-  PROPERTY_MANAGER
-  ACCOUNTANT
-  MAINTENANCE
   TENANT
 }
 
+enum LeaseStatus {
+  DRAFT
+  ACTIVE
+  TERMINATED
+  EXPIRED
+}
+
+enum LedgerEntryType {
+  CHARGE
+  PAYMENT
+  CREDIT
+}
+
+enum LedgerEntryStatus {
+  PENDING
+  POSTED
+  VOID
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum WorkOrderPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+model Organization {
+  id                   String             @id @default(cuid())
+  type                 OrganizationType
+  name                 String
+  plan                 String             @default("basic")
+  subdomain            String?            @unique
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  unitCount            Int                @default(0)
+
+  users                User[]
+  properties           Property[]
+  units                Unit[]
+  leases               Lease[]
+  ledgerEntries        LedgerEntry[]
+  payments             Payment[]
+  workOrders           WorkOrder[]
+  documents            Document[]
+  auditLogs            AuditLog[]
+  subscription         Subscription?
+
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+}
+
 model User {
-  id              String          @id @default(cuid())
-  organizationId  String
-  organization    Organization    @relation(fields: [organizationId], references: [id])
+  id                 String             @id @default(cuid())
+  organizationId     String
+  organization       Organization       @relation(fields: [organizationId], references: [id])
 
-  email           String
-  cognitoSub      String          @unique
-  role            UserRole
-  firstName       String
-  lastName        String
+  email              String
+  name               String
+  cognitoSub         String?            @unique
+  role               UserRole
+  status             String             @default("ACTIVE")
 
-  tenantProfile   TenantProfile?
-  workOrders      WorkOrder[]     @relation("WorkOrderAssignee")
-  workOrderComments WorkOrderComment[] @relation("WorkOrderCommentAuthor")
-  auditLogs       AuditLog[]      @relation("AuditActor")
+  tenantProfile      TenantProfile?
+  workOrdersAssigned WorkOrder[]        @relation("WorkOrderAssignee")
+  workOrderComments  WorkOrderComment[] @relation("WorkOrderCommentAuthor")
+  auditLogs          AuditLog[]         @relation("AuditActor")
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   @@unique([organizationId, email])
+  @@index([organizationId])
 }
 
 model Property {
@@ -70,7 +123,8 @@ model Property {
   city            String
   state           String
   postalCode      String
-  country         String         @default("US")
+  country         String        @default("US")
+  status          String        @default("ACTIVE")
 
   units           Unit[]
 
@@ -81,22 +135,28 @@ model Property {
 }
 
 model Unit {
-  id              String       @id @default(cuid())
+  id              String        @id @default(cuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+
   propertyId      String
-  property        Property     @relation(fields: [propertyId], references: [id])
+  property        Property      @relation(fields: [propertyId], references: [id])
 
   unitNumber      String
   bedrooms        Int
   bathrooms       Float
   squareFeet      Int?
+  rentAmount      Int           // cents
+  status          String        @default("AVAILABLE")
 
   leases          Lease[]
   workOrders      WorkOrder[]
 
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([propertyId])
+  @@index([organizationId])
 }
 
 model Lease {
@@ -109,8 +169,8 @@ model Lease {
 
   startDate       DateTime
   endDate         DateTime
-  rentAmountCents Int
-  securityDepositCents Int?
+  rentAmount      Int           // cents
+  depositAmount   Int?
   status          LeaseStatus   @default(ACTIVE)
 
   tenants         TenantProfile[]
@@ -121,117 +181,101 @@ model Lease {
   updatedAt       DateTime      @updatedAt
 
   @@index([organizationId])
-}
-
-enum LeaseStatus {
-  DRAFT
-  ACTIVE
-  TERMINATED
-  EXPIRED
+  @@index([unitId])
 }
 
 model TenantProfile {
-  id          String    @id @default(cuid())
-  userId      String    @unique
-  user        User      @relation(fields: [userId], references: [id])
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
 
-  leaseId     String
-  lease       Lease     @relation(fields: [leaseId], references: [id])
+  leaseId   String
+  lease     Lease    @relation(fields: [leaseId], references: [id])
 
-  phone       String?
+  phone     String?
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-}
-
-enum LedgerEntryType {
-  CHARGE
-  PAYMENT
-  ADJUSTMENT
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model LedgerEntry {
-  id              String          @id @default(cuid())
+  id              String             @id @default(cuid())
   organizationId  String
-  organization    Organization    @relation(fields: [organizationId], references: [id])
+  organization    Organization       @relation(fields: [organizationId], references: [id])
 
   leaseId         String
-  lease           Lease           @relation(fields: [leaseId], references: [id])
+  lease           Lease              @relation(fields: [leaseId], references: [id])
 
   type            LedgerEntryType
-  amountCents     Int
-  description     String
-  effectiveDate   DateTime
+  amount          Int                // cents
+  currency        String             @default("usd")
+  dueDate         DateTime
+  status          LedgerEntryStatus  @default(PENDING)
+  description     String?
 
-  paymentId       String?         @unique
-  payment         Payment?        @relation(fields: [paymentId], references: [id])
+  paymentId       String?
+  payment         Payment?           @relation(fields: [paymentId], references: [id])
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt       DateTime           @default(now())
 
-  @@index([organizationId, leaseId])
-}
-
-enum PaymentStatus {
-  PENDING
-  SUCCEEDED
-  FAILED
-  CANCELED
+  @@index([leaseId])
+  @@index([organizationId])
 }
 
 model Payment {
-  id                     String        @id @default(cuid())
+  id                     String         @id @default(cuid())
   organizationId         String
-  organization           Organization  @relation(fields: [organizationId], references: [id])
+  organization           Organization   @relation(fields: [organizationId], references: [id])
 
   leaseId                String
-  lease                  Lease         @relation(fields: [leaseId], references: [id])
+  lease                  Lease          @relation(fields: [leaseId], references: [id])
 
-  amountCents            Int
-  status                 PaymentStatus @default(PENDING)
-  method                 String
+  tenantProfileId        String?
+  tenantProfile          TenantProfile? @relation(fields: [tenantProfileId], references: [id])
 
-  stripePaymentIntentId  String        @unique
+  ledgerEntryId          String?
+  ledgerEntry            LedgerEntry?   @relation(fields: [ledgerEntryId], references: [id])
 
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
+  amount                 Int            // cents
+  currency               String         @default("usd")
+  method                 String?
+  status                 PaymentStatus  @default(PENDING)
 
-  ledgerEntry            LedgerEntry?
+  stripePaymentIntentId  String?        @unique
 
-  @@index([organizationId, leaseId])
-}
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
 
-enum WorkOrderStatus {
-  OPEN
-  IN_PROGRESS
-  RESOLVED
-  CANCELED
+  @@index([leaseId])
+  @@index([organizationId])
 }
 
 model WorkOrder {
-  id              String          @id @default(cuid())
-  organizationId  String
-  organization    Organization    @relation(fields: [organizationId], references: [id])
+  id               String           @id @default(cuid())
+  organizationId   String
+  organization     Organization     @relation(fields: [organizationId], references: [id])
 
-  unitId          String
-  unit            Unit            @relation(fields: [unitId], references: [id])
+  unitId           String
+  unit             Unit             @relation(fields: [unitId], references: [id])
 
-  title           String
-  description     String
-  status          WorkOrderStatus @default(OPEN)
+  createdByUserId  String
+  createdByUser    User             @relation(fields: [createdByUserId], references: [id])
 
-  tenantId        String?
-  tenant          TenantProfile?  @relation(fields: [tenantId], references: [id])
+  tenantUserId     String?
+  tenantUser       User?            @relation("WorkOrderTenantUser", fields: [tenantUserId], references: [id])
 
-  assigneeId      String?
-  assignee        User?           @relation("WorkOrderAssignee", fields: [assigneeId], references: [id])
+  category         String
+  priority         WorkOrderPriority @default(MEDIUM)
+  status           WorkOrderStatus   @default(OPEN)
+  description      String
 
-  comments        WorkOrderComment[]
+  comments         WorkOrderComment[]
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
-  @@index([organizationId, unitId])
+  @@index([organizationId])
+  @@index([unitId])
 }
 
 model WorkOrderComment {
@@ -239,30 +283,31 @@ model WorkOrderComment {
   workOrderId String
   workOrder   WorkOrder @relation(fields: [workOrderId], references: [id])
 
-  authorId    String
-  author      User     @relation("WorkOrderCommentAuthor", fields: [authorId], references: [id])
+  userId      String
+  user        User     @relation("WorkOrderCommentAuthor", fields: [userId], references: [id])
 
-  body        String
+  comment     String
 
   createdAt   DateTime @default(now())
 }
 
 model Document {
-  id              String        @id @default(cuid())
-  organizationId  String
-  organization    Organization  @relation(fields: [organizationId], references: [id])
+  id               String        @id @default(cuid())
+  organizationId   String
+  organization     Organization  @relation(fields: [organizationId], references: [id])
 
-  s3Key           String
-  fileName        String
-  contentType     String
-  sizeBytes       Int
+  relatedType      String
+  relatedId        String
+  name             String
+  s3Key            String
+  mimeType         String
+  createdByUserId  String
+  createdByUser    User          @relation(fields: [createdByUserId], references: [id])
 
-  entityType      String
-  entityId        String
+  createdAt        DateTime      @default(now())
 
-  createdAt       DateTime      @default(now())
-
-  @@index([organizationId, entityType, entityId])
+  @@index([organizationId])
+  @@index([organizationId, relatedType, relatedId])
 }
 
 model AuditLog {
@@ -270,26 +315,30 @@ model AuditLog {
   organizationId  String
   organization    Organization  @relation(fields: [organizationId], references: [id])
 
-  actorId         String?
-  actor           User?         @relation("AuditActor", fields: [actorId], references: [id])
+  userId          String?
+  user            User?         @relation("AuditActor", fields: [userId], references: [id])
 
   action          String
-  metadata        Json?
+  entityType      String
+  entityId        String
+  metadataJson    Json?
 
   createdAt       DateTime      @default(now())
 
+  @@index([organizationId])
   @@index([organizationId, createdAt])
 }
 
 model Subscription {
-  id                   String        @id @default(cuid())
-  organizationId       String        @unique
-  organization         Organization  @relation(fields: [organizationId], references: [id])
+  id                   String             @id @default(cuid())
+  organizationId       String             @unique
+  organization         Organization       @relation(fields: [organizationId], references: [id])
 
-  stripeSubscriptionId String        @unique
-  status               String
-  pricePerUnitCents    Int
+  plan                 String
+  unitCount            Int
+  stripeSubscriptionId String?
+  status               SubscriptionStatus @default(ACTIVE)
 
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 }
