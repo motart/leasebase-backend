@@ -1,4 +1,4 @@
-import { PrismaClient, UserRole, LeaseStatus, LedgerEntryType } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -21,7 +21,7 @@ async function main() {
       organizationId: org.id,
       email: 'owner@demo.local',
       cognitoSub: 'local-owner-demo',
-      role: UserRole.OWNER,
+      role: 'OWNER',
       firstName: 'Olivia',
       lastName: 'Owner',
     },
@@ -55,7 +55,7 @@ async function main() {
       startDate: new Date(),
       endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
       rentAmountCents: 200000,
-      status: LeaseStatus.ACTIVE,
+      status: 'ACTIVE',
     },
   });
 
@@ -64,7 +64,7 @@ async function main() {
       organizationId: org.id,
       email: 'tenant@demo.local',
       cognitoSub: 'local-tenant-demo',
-      role: UserRole.TENANT,
+      role: 'TENANT',
       firstName: 'Terry',
       lastName: 'Tenant',
     },
@@ -82,7 +82,7 @@ async function main() {
     data: {
       organizationId: org.id,
       leaseId: lease.id,
-      type: LedgerEntryType.CHARGE,
+      type: 'CHARGE',
       amountCents: 200000,
       description: 'First month rent',
       effectiveDate: new Date(),
