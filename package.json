@@ -21,7 +21,8 @@
     "lint:api": "cd services/api && npm run lint",
     "lint:web": "cd apps/web && npm run lint",
     "migrate": "cd services/api && npx prisma migrate deploy",
-    "seed": "cd services/api && npm run seed"
+    "seed": "cd services/api && npm run seed",
+    "multi-agent": "node multi_agent/leasebase-cli.js"
   },
   "devDependencies": {
     "typescript": "^5.7.0"
