@@ -30,8 +30,12 @@ coverage
 # Terraform
 *.tfstate
 *.tfstate.*
+*.tfvars
 .terraform/
 .terraform.lock.hcl
 
 # Docker
 *.pid
+
+# macOS
+.DS_Store
