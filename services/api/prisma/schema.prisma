@@ -102,8 +102,11 @@ model User {
 
   tenantProfile      TenantProfile?
   workOrdersAssigned WorkOrder[]        @relation("WorkOrderAssignee")
+  workOrdersCreated  WorkOrder[]        @relation("WorkOrderCreatedBy")
+  tenantWorkOrders   WorkOrder[]        @relation("WorkOrderTenantUser")
   workOrderComments  WorkOrderComment[] @relation("WorkOrderCommentAuthor")
   auditLogs          AuditLog[]         @relation("AuditActor")
+  documents          Document[]
 
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
@@ -194,6 +197,8 @@ model TenantProfile {
 
   phone     String?
 
+  payments  Payment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -213,8 +218,7 @@ model LedgerEntry {
   status          LedgerEntryStatus  @default(PENDING)
   description     String?
 
-  paymentId       String?
-  payment         Payment?           @relation(fields: [paymentId], references: [id])
+  payments        Payment[]
 
   createdAt       DateTime           @default(now())
 
@@ -233,7 +237,7 @@ model Payment {
   tenantProfileId        String?
   tenantProfile          TenantProfile? @relation(fields: [tenantProfileId], references: [id])
 
-  ledgerEntryId          String?
+  ledgerEntryId          String?        @unique
   ledgerEntry            LedgerEntry?   @relation(fields: [ledgerEntryId], references: [id])
 
   amount                 Int            // cents
@@ -259,10 +263,13 @@ model WorkOrder {
   unit             Unit             @relation(fields: [unitId], references: [id])
 
   createdByUserId  String
-  createdByUser    User             @relation(fields: [createdByUserId], references: [id])
+  createdByUser    User             @relation("WorkOrderCreatedBy", fields: [createdByUserId], references: [id])
 
   tenantUserId     String?
   tenantUser       User?            @relation("WorkOrderTenantUser", fields: [tenantUserId], references: [id])
+
+  assigneeId       String?
+  assignee         User?            @relation("WorkOrderAssignee", fields: [assigneeId], references: [id])
 
   category         String
   priority         WorkOrderPriority @default(MEDIUM)

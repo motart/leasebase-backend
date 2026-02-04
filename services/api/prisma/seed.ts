@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import {
   LeaseStatus,
   LedgerEntryType,
@@ -13,8 +14,13 @@ const prisma = new PrismaClient();
 
 async function main() {
   // Landlord organization
-  const landlordOrg = await prisma.organization.create({
-    data: {
+  const landlordOrg = await prisma.organization.upsert({
+    where: { subdomain: 'landlord-demo' },
+    update: {
+      plan: 'basic',
+      unitCount: 4,
+    },
+    create: {
       type: OrganizationType.LANDLORD,
       name: 'Demo Landlord Org',
       plan: 'basic',
@@ -24,8 +30,12 @@ async function main() {
   });
 
   // Property manager organization
-  const pmOrg = await prisma.organization.create({
-    data: {
+  const pmOrg = await prisma.organization.upsert({
+    where: { subdomain: 'pm-demo' },
+    update: {
+      plan: 'basic',
+    },
+    create: {
       type: OrganizationType.PM_COMPANY,
       name: 'Demo PM Org',
       plan: 'basic',
@@ -34,8 +44,19 @@ async function main() {
   });
 
   // Admin user for landlord org
-  const adminUser = await prisma.user.create({
-    data: {
+  const adminUser = await prisma.user.upsert({
+    where: {
+      organizationId_email: {
+        organizationId: landlordOrg.id,
+        email: 'admin@landlord.local',
+      },
+    },
+    update: {
+      name: 'Alice Admin',
+      cognitoSub: 'dev-admin-landlord',
+      role: UserRole.ORG_ADMIN,
+    },
+    create: {
       organizationId: landlordOrg.id,
       email: 'admin@landlord.local',
       name: 'Alice Admin',
@@ -45,8 +66,19 @@ async function main() {
   });
 
   // Tenant user for landlord org
-  const tenantUser = await prisma.user.create({
-    data: {
+  const tenantUser = await prisma.user.upsert({
+    where: {
+      organizationId_email: {
+        organizationId: landlordOrg.id,
+        email: 'tenant@landlord.local',
+      },
+    },
+    update: {
+      name: 'Terry Tenant',
+      cognitoSub: 'dev-tenant-landlord',
+      role: UserRole.TENANT,
+    },
+    create: {
       organizationId: landlordOrg.id,
       email: 'tenant@landlord.local',
       name: 'Terry Tenant',
@@ -98,8 +130,13 @@ async function main() {
     },
   });
 
-  const tenantProfile = await prisma.tenantProfile.create({
-    data: {
+  const tenantProfile = await prisma.tenantProfile.upsert({
+    where: { userId: tenantUser.id },
+    update: {
+      leaseId: lease.id,
+      phone: '+1-555-0100',
+    },
+    create: {
       userId: tenantUser.id,
       leaseId: lease.id,
       phone: '+1-555-0100',
@@ -134,8 +171,16 @@ async function main() {
   });
 
   // Basic subscription row for landlord org
-  await prisma.subscription.create({
-    data: {
+  await prisma.subscription.upsert({
+    where: {
+      organizationId: landlordOrg.id,
+    },
+    update: {
+      plan: 'per-unit-basic',
+      unitCount: 4,
+      status: SubscriptionStatus.ACTIVE,
+    },
+    create: {
       organizationId: landlordOrg.id,
       plan: 'per-unit-basic',
       unitCount: 4,
@@ -145,8 +190,19 @@ async function main() {
   });
 
   // Minimal PM org admin user (no leases/data attached yet)
-  await prisma.user.create({
-    data: {
+  await prisma.user.upsert({
+    where: {
+      organizationId_email: {
+        organizationId: pmOrg.id,
+        email: 'admin@pm.local',
+      },
+    },
+    update: {
+      name: 'Paula PM',
+      cognitoSub: 'dev-admin-pm',
+      role: UserRole.ORG_ADMIN,
+    },
+    create: {
       organizationId: pmOrg.id,
       email: 'admin@pm.local',
       name: 'Paula PM',
