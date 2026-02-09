@@ -2,9 +2,9 @@
 # Copy to dev.tfvars and apply with: terraform apply -var-file=dev.tfvars
 
 environment        = "dev"
-aws_region         = "us-east-1"
+aws_region         = "us-west-1"
 vpc_cidr           = "10.10.0.0/16"
-availability_zones = ["us-east-1a", "us-east-1b"]
+availability_zones = ["us-west-1a", "us-west-1b"]
 
 # NAT Gateway disabled for dev (cost savings)
 # ECS tasks will run in public subnets with public IPs

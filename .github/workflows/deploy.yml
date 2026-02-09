@@ -1,0 +1,107 @@
+name: Deploy API
+
+on:
+  push:
+    branches:
+      - develop
+      - qa
+      - main
+      - 'release/*'
+
+env:
+  AWS_REGION: us-west-1
+  ECR_REPOSITORY_PREFIX: leasebase
+  ECS_CLUSTER_PREFIX: leasebase
+  ECS_SERVICE_SUFFIX: api-service
+
+jobs:
+  deploy:
+    name: Build and Deploy API
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine environment
+        id: env
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "Branch: $BRANCH"
+          
+          if [[ "$BRANCH" == "develop" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH" == "qa" ]]; then
+            echo "environment=qa" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH" == release/* ]]; then
+            echo "environment=uat" >> $GITHUB_OUTPUT
+          elif [[ "$BRANCH" == "main" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          else
+            echo "Unknown branch: $BRANCH"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets[format('AWS_DEPLOY_ROLE_{0}', steps.env.outputs.environment)] }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        uses: docker/build-push-action@v5
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ENV: ${{ steps.env.outputs.environment }}
+        with:
+          context: services/api
+          file: services/api/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ steps.env.outputs.environment }}-api:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ steps.env.outputs.environment }}-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Download current task definition
+        env:
+          ENV: ${{ steps.env.outputs.environment }}
+        run: |
+          TASK_DEF="${ECS_CLUSTER_PREFIX}-${ENV}-api-task"
+          aws ecs describe-task-definition \
+            --task-definition $TASK_DEF \
+            --query 'taskDefinition' \
+            --output json > task-def.json
+          
+          # Remove fields that can't be used when registering a new revision
+          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' task-def.json > new-task-def.json
+
+      - name: Update task definition with new image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: new-task-def.json
+          container-name: api
+          image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY_PREFIX }}-${{ steps.env.outputs.environment }}-api:${{ github.sha }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        env:
+          ENV: ${{ steps.env.outputs.environment }}
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_CLUSTER_PREFIX }}-${{ steps.env.outputs.environment }}-${{ env.ECS_SERVICE_SUFFIX }}
+          cluster: ${{ env.ECS_CLUSTER_PREFIX }}-${{ steps.env.outputs.environment }}-cluster
+          wait-for-service-stability: ${{ steps.env.outputs.environment == 'prod' }}
+

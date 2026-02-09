@@ -2,45 +2,121 @@
 
 This file provides guidance to WARP (warp.dev) when working with code in this repository.
 
-## Repository status
+## Repository scope and related projects
 
-As of February 2, 2026, this repository only contains `README.md` and an empty git history. No application code, tooling configuration, or documentation beyond the one-line project description has been committed yet.
+- This repo is the **standalone web frontend** for the Leasebase platform.
+- It is **frontend-only**:
+  - No backend API code lives here.
+  - No mobile code lives here.
+- The web client talks to the backend API running from the separate backend repo:
+  - Backend/API: `../leasebase` (a.k.a. `leasebase-backend`), `services/api` (NestJS + Prisma + PostgreSQL).
+  - Mobile app: `../leasebase-mobile`.
+- All **web/frontend concerns** (pages, components, styling, web routing, web-only utilities) belong here once the app is bootstrapped.
+- Backend services, database schema/migrations, and infrastructure code live in `../leasebase` and should not be added to this repo.
 
-## Project description
+For system-level and AWS architecture, consult the backend monorepo:
+- `../leasebase/README.md` – backend & web deployment to AWS (per account).
+- `../leasebase/docs/architecture.md` – overall system and AWS architecture.
 
-From `README.md`:
-- This repository is intended to become a "Real Estate Leasing platform for Property Managers and Owners/landlords and tenants".
+## Current state of this repo
 
-Before assuming any particular tech stack (frontend framework, backend framework, database, etc.), inspect the latest repository contents or confirm with the project owner, since none of that is currently defined in code.
+- This repository is bootstrapped as a **Next.js (TypeScript) + Tailwind CSS** app using the App Router (`app/`).
+- A concrete `package.json` exists with scripts for dev, build, tests, and OpenAPI client generation.
+- The web UI will be deployed as static/SSR assets (Next.js) behind AWS infrastructure provisioned from the backend repo.
+- The Next.js build output directory is the default `.next/`.
 
-## Commands
+If you materially change the frontend stack or core commands, **update this file and the README** with precise commands and paths.
 
-There are no documented build, lint, or test commands yet, and no configuration files (such as `package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `pom.xml`, `Makefile`, or CI configuration) are present in the repository.
+## Local development workflow
 
-When the implementation and tooling are added, update this section with:
-- How to run the application in development (including any required environment variables or services).
-- How to run the full test suite.
-- How to run a single test (or a focused subset), following the conventions of the chosen test framework.
-- How to run linting / formatting / type-checking, if applicable.
+A full local environment (API + web + DB) uses **two repos side by side**:
 
-Until then, there are no canonical commands for Warp to run beyond standard git operations.
+- Backend/API: `../leasebase`
+- Web frontend: `./` (this repo, `leasebase-web`)
 
-## Architecture and structure
+### 1. Run the backend API locally (from `../leasebase`)
 
-There is currently no committed code, so there is no concrete architecture to describe.
+These commands are run in the backend monorepo and are included here because the web client depends on that API:
 
-Once code is added, this section should be updated to summarize, at a high level:
-- The main application layers (e.g., API/backend services, frontend/web client, background jobs, infrastructure as code) and how they interact.
-- The primary domain modules or bounded contexts (for example, if they are introduced later: "Leases", "Properties", "Tenants", "Payments", etc.), and which parts of the codebase own them.
-- Any cross-cutting concerns implemented in shared modules (authentication, authorization, logging, configuration, error handling, etc.).
-- How external services (payment processors, notification services, identity providers, etc.) are integrated and where those integrations live in the code.
+```bash path=null start=null
+cd ../leasebase
+npm install
+# Start or provision the DB (see ../leasebase docs for the exact command, e.g. docker-compose up -d db)
+npm run migrate
+npm run seed
+npm run dev:api    # API on http://localhost:4000 (check ../leasebase for the actual port)
+```
 
-Keep this description focused on the big-picture structure that requires reading multiple files to understand (e.g., how services are wired together), rather than listing every directory or file.
+Always treat the backend repo as the source of truth for API ports, env vars, and DB setup.
 
-## Notes for future agents
+### 2. Run the web frontend locally (this repo)
 
-- Re-scan the repository structure before making assumptions about the stack or framework; this project is currently a blank slate.
-- After the initial implementation lands, prioritize updating this `AGENTS.md` with:
-  - Verified development commands.
-  - A concise description of the actual architecture that emerges in code.
-  - Any project-specific conventions (naming, error-handling patterns, testing strategy, etc.) that are documented elsewhere (e.g., in `README.md`, `CONTRIBUTING.md`, or dedicated docs).
+Once this repository is bootstrapped with a concrete frontend framework and `package.json`:
+
+```bash path=null start=null
+cd ../leasebase-web
+npm install
+npm run dev        # starts the web dev server
+```
+
+Notes:
+- The exact dev command (`npm run dev` vs something else) must match the scripts defined in this repo's `package.json` once created.
+- Configure the API base URL via an environment file (likely `.env.local` or similar), pointing at the Leasebase API (local, dev, or prod), e.g. `http://localhost:4000`.
+
+## Build, test, and lint commands
+
+Authoritative scripts live in `package.json`. Current expectations:
+
+### Build
+
+```bash path=null start=null
+cd ../leasebase-web
+npm install
+npm run build
+```
+
+- Next.js uses the default `.next/` build output directory.
+
+### Dev server
+
+```bash path=null start=null
+cd ../leasebase-web
+npm install
+npm run dev
+```
+
+### Tests
+
+- Unit/component tests use Jest + Testing Library:
+
+```bash path=null start=null
+cd ../leasebase-web
+npm test           # run Jest test suite
+npm run test:watch # optional watch mode
+```
+
+- Minimal Playwright E2E smoke tests:
+
+```bash path=null start=null
+cd ../leasebase-web
+npm run test:e2e
+```
+
+### Linting / formatting
+
+- ESLint is configured via `eslint-config-next`:
+
+```bash path=null start=null
+cd ../leasebase-web
+npm run lint
+```
+
+## How future agents should reason about changes
+
+- Keep a **strict separation of concerns** between this repo (web UI) and the backend repo (`../leasebase`):
+  - Web-only logic, client-side routing, and UI state live here.
+  - Business logic that clearly belongs to the backend (authorization, data validation, persistence, heavy computations) stays in the backend service.
+- If a change spans both frontend and backend:
+  - Coordinate with the backend code in `../leasebase/services/api` and its schema/migrations.
+  - Make sure any API contract changes (types, DTOs, error shapes) are reflected in both repos.
+- When in doubt about infrastructure, deployment pipelines, or API shape, prefer **reading and aligning with the backend repo docs** rather than guessing from this repository alone.

@@ -12,7 +12,7 @@ terraform {
   # backend "s3" {
   #   bucket         = "leasebase-terraform-state-dev"
   #   key            = "dev/terraform.tfstate"
-  #   region         = "us-east-1"
+  #   region         = "us-west-1"
   #   encrypt        = true
   #   dynamodb_table = "leasebase-terraform-locks-dev"
   # }
@@ -78,6 +78,7 @@ module "ecs" {
   target_group_arn      = module.alb.target_group_arn
   container_image       = var.api_container_image != "" ? var.api_container_image : "${module.ecr.repository_url}:latest"
   database_url          = var.database_url
+  sentry_dsn            = var.sentry_dsn
   cpu                   = 256
   memory                = 512
   desired_count         = 1
