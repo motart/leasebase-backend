@@ -24,3 +24,8 @@ export class RegisterResponseDto {
   @ApiProperty({ description: 'Success message' })
   message!: string;
 }
+
+export class MessageResponseDto {
+  @ApiProperty({ description: 'Human-readable message about the result of the operation' })
+  message!: string;
+}

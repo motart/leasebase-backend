@@ -9,6 +9,8 @@ import {
   InitiateAuthCommand,
   SignUpCommand,
   AuthFlowType,
+  ConfirmSignUpCommand,
+  ResendConfirmationCodeCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -219,8 +221,8 @@ export class AuthService {
         userConfirmed: response.UserConfirmed ?? false,
         userSub: response.UserSub ?? '',
         message: response.UserConfirmed
-          ? 'Registration successful. You can now log in.'
-          : 'Registration successful. Please check your email to verify your account.',
+          ? 'Registration successful. You can now log in to Leasebase.'
+          : 'Registration successful. Please check your email for a Leasebase verification code.',
       };
     } catch (error: any) {
       if (error.name === 'UsernameExistsException') {
@@ -231,6 +233,72 @@ export class AuthService {
       }
       if (error.name === 'InvalidParameterException') {
         throw new BadRequestException(error.message || 'Invalid registration data');
+      }
+      throw error;
+    }
+  }
+
+  async confirmEmail(email: string, code: string): Promise<{ message: string }> {
+    const clientId = this.config.get<string>('COGNITO_CLIENT_ID');
+    if (!clientId) {
+      throw new BadRequestException('Cognito client ID is not configured');
+    }
+
+    try {
+      const command = new ConfirmSignUpCommand({
+        ClientId: clientId,
+        Username: email,
+        ConfirmationCode: code,
+      });
+
+      await this.cognitoClient.send(command);
+
+      return {
+        message: 'Your email has been verified. You can now sign in to Leasebase.',
+      };
+    } catch (error: any) {
+      if (error.name === 'CodeMismatchException') {
+        throw new BadRequestException('The verification code is incorrect. Please try again.');
+      }
+      if (error.name === 'ExpiredCodeException') {
+        throw new BadRequestException('The verification code has expired. Please request a new code.');
+      }
+      if (error.name === 'UserNotFoundException') {
+        throw new BadRequestException('No account was found for this email.');
+      }
+      if (error.name === 'NotAuthorizedException') {
+        throw new BadRequestException('This email is already verified. You can sign in.');
+      }
+      throw error;
+    }
+  }
+
+  async resendConfirmationCode(email: string): Promise<{ message: string }> {
+    const clientId = this.config.get<string>('COGNITO_CLIENT_ID');
+    if (!clientId) {
+      throw new BadRequestException('Cognito client ID is not configured');
+    }
+
+    try {
+      const command = new ResendConfirmationCodeCommand({
+        ClientId: clientId,
+        Username: email,
+      });
+
+      await this.cognitoClient.send(command);
+
+      return {
+        message: 'We have sent a new Leasebase verification code to your email.',
+      };
+    } catch (error: any) {
+      if (error.name === 'UserNotFoundException') {
+        throw new BadRequestException('No account was found for this email.');
+      }
+      if (error.name === 'InvalidParameterException') {
+        throw new BadRequestException(error.message || 'Unable to resend verification code.');
+      }
+      if (error.name === 'NotAuthorizedException') {
+        throw new BadRequestException('This email is already verified. You can sign in.');
       }
       throw error;
     }

@@ -7,7 +7,12 @@ import { CurrentUserDto } from './dto/current-user.dto';
 import { AuthConfigDto } from './dto/auth-config.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { AuthResponseDto, RegisterResponseDto } from './dto/auth-response.dto';
+import { ConfirmEmailDto, ResendConfirmationDto } from './dto/confirm-email.dto';
+import {
+  AuthResponseDto,
+  RegisterResponseDto,
+  MessageResponseDto,
+} from './dto/auth-response.dto';
 import { Public } from '../common/decorators/public.decorator';
 import { AuthService } from './auth.service';
 
@@ -67,5 +72,25 @@ export class AuthController {
   @ApiBadRequestResponse({ description: 'Email already exists or invalid data' })
   async register(@Body() dto: RegisterDto): Promise<RegisterResponseDto> {
     return this.authService.register(dto);
+  }
+
+  @Public()
+  @Post('confirm-email')
+  @ApiOperation({ summary: 'Confirm a newly registered user via email verification code' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({ description: 'Invalid or expired verification code' })
+  async confirmEmail(@Body() dto: ConfirmEmailDto): Promise<MessageResponseDto> {
+    return this.authService.confirmEmail(dto.email, dto.code);
+  }
+
+  @Public()
+  @Post('resend-confirmation')
+  @ApiOperation({ summary: 'Resend email verification code to a user' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({ description: 'Unable to resend verification code' })
+  async resendConfirmation(
+    @Body() dto: ResendConfirmationDto,
+  ): Promise<MessageResponseDto> {
+    return this.authService.resendConfirmationCode(dto.email);
   }
 }
