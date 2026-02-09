@@ -149,6 +149,10 @@ resource "aws_ecs_task_definition" "api" {
         {
           name  = "DATABASE_URL"
           value = var.database_url
+        },
+        {
+          name  = "SENTRY_DSN"
+          value = var.sentry_dsn
         }
       ]
 
@@ -163,10 +167,10 @@ resource "aws_ecs_task_definition" "api" {
 
       healthCheck = {
         command     = ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:${var.container_port}/health || exit 1"]
-        interval    = 30
+        interval    = var.environment == "prod" ? 30 : 10
         timeout     = 5
         retries     = 3
-        startPeriod = 60
+        startPeriod = var.environment == "prod" ? 60 : 30
       }
     }
   ])
@@ -205,10 +209,17 @@ resource "aws_ecs_service" "api" {
     container_port   = var.container_port
   }
 
-  deployment_configuration {
-    maximum_percent         = 200
-    minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = var.environment == "prod" ? 100 : 50
+
+  # Enable deployment circuit breaker for automatic rollback on failures
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
   }
+
+  # Shorter health check grace period for non-prod
+  health_check_grace_period_seconds = var.environment == "prod" ? 60 : 30
 
   lifecycle {
     ignore_changes = [task_definition]

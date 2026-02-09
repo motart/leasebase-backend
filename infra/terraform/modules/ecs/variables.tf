@@ -67,3 +67,10 @@ variable "database_url" {
   type        = string
   sensitive   = true
 }
+
+variable "sentry_dsn" {
+  description = "Sentry DSN for error tracking"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

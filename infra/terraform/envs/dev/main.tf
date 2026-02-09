@@ -78,6 +78,7 @@ module "ecs" {
   target_group_arn      = module.alb.target_group_arn
   container_image       = var.api_container_image != "" ? var.api_container_image : "${module.ecr.repository_url}:latest"
   database_url          = var.database_url
+  sentry_dsn            = var.sentry_dsn
   cpu                   = 256
   memory                = 512
   desired_count         = 1
