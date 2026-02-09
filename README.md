@@ -1,12 +1,15 @@
-# Leasebase Monorepo
+# Leasebase Backend Monorepo
 
 Real Estate Leasing platform for property managers, owners/landlords, and tenants.
 
-This repository is a TypeScript monorepo that contains:
+This repository is the **backend monorepo** for Leasebase. It contains:
 - The backend API (NestJS + Prisma + PostgreSQL)
-- The future web and mobile applications
-- Infrastructure and documentation
-- Multi‑agent tooling to help plan and execute changes across the stack
+- Shared backend infrastructure and documentation
+- Multi‑agent tooling to help plan and execute backend‑centric and cross‑repo changes
+
+**Frontend code (web and mobile)** lives in separate repositories:
+- `leasebase-web` – standalone web client
+- `leasebase-mobile` – standalone mobile client
 
 If you want to work on Leasebase locally or deploy the backend to AWS, this is the **source of truth**.
 
@@ -14,13 +17,14 @@ If you want to work on Leasebase locally or deploy the backend to AWS, this is t
 
 ## Repository layout
 
+This repo is intentionally **backend‑only**. Frontend projects live in their own repos (`leasebase-web`, `leasebase-mobile`).
+
 - `apps/`
-  - `apps/web/` – Web client (frontend will live here; currently a placeholder)
-  - `apps/mobile/` – Mobile client (mobile app will live here; currently a placeholder)
+  - Reserved for potential future backend apps/services (not frontends)
 - `services/`
   - `services/api/` – NestJS API using Prisma and PostgreSQL (the main backend service)
 - `infra/`
-  - `infra/terraform/` – Reserved for Terraform infrastructure-as-code (currently a skeleton; see architecture docs for the intended design)
+  - `infra/terraform/bootstrap` – Terraform for bootstrapping AWS accounts (IAM roles, OIDC for GitHub Actions, basic shared resources). Full app infrastructure (VPC, RDS, ECS/Fargate, ALB, S3/CloudFront, etc.) now lives in the separate `leasebase-iac` repo.
 - `docs/`
   - `docs/architecture.md` – High-level system and domain architecture
 - `multi_agent/`
@@ -118,36 +122,105 @@ This runs NestJS from `services/api`, listening on:
 Swagger API docs are exposed at:
 - `http://localhost:4000/docs`
 
-### 6. Run the web client (when implemented)
+### 6. Authentication (AWS Cognito)
 
-The monorepo is already wired for a web app at `apps/web`.
+The backend API uses **AWS Cognito** for authentication from the start. It does **not** issue tokens or handle user registration itself; instead it validates **Cognito access tokens** sent as Bearer tokens.
 
-To start the web client (once it has been implemented):
+#### Required environment variables
 
-```bash path=null start=null
-npm run dev:web
-```
-
-### 7. Run the mobile app (when implemented)
-
-Similarly, the monorepo reserves `apps/mobile` for the mobile client. Once code is added there, you can run:
+In `services/api` (or the shell where you run the API), set:
 
 ```bash path=null start=null
-npm run dev:mobile
+COGNITO_REGION=us-west-2                # or your region
+COGNITO_USER_POOL_ID=us-west-2_XXXXXXX  # Cognito User Pool ID
+COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxx  # App client ID for web
 ```
 
-### 8. Run API and web together
+These are used to construct the expected JWT **issuer** and **JWKS** URL:
 
-For convenience you can start Postgres, API, and web (where web exists) from the root:
+- Issuer: `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}`
+- JWKS: `${issuer}/.well-known/jwks.json`
+
+The API verifies incoming Bearer tokens against this JWKS and checks the `aud` (audience) claim matches `COGNITO_CLIENT_ID`.
+
+#### Dev-only auth bypass (for tests only)
+
+For certain local or test scenarios you can enable a **dev-only** auth bypass. This is **disabled by default** and must never be used in production.
 
 ```bash path=null start=null
-npm run dev
+DEV_AUTH_BYPASS=true
 ```
 
-This will:
-- Ensure Postgres is running via Docker Compose
-- Start the API (`services/api`)
-- Start the web app (`apps/web`)
+When this flag is set, you can simulate an authenticated user via headers:
+
+- `x-dev-user-email` – user email
+- `x-dev-user-role` – one of `ORG_ADMIN | PM_STAFF | OWNER | TENANT`
+- `x-dev-org-id` – organization id
+
+The backend will upsert a matching `Organization` + `User` record and treat that as the current user. When `DEV_AUTH_BYPASS` is not `true`, these headers are ignored and a real Cognito token is required.
+
+#### Auth endpoints
+
+- `GET /auth/me`
+  - Protected endpoint (requires Bearer token).
+  - Returns the normalized current user:
+    - `id`, `orgId`, `email`, `name`, `role`.
+  - Documented in Swagger as `CurrentUserDto` under the `auth` tag.
+
+- `GET /auth/config`
+  - **Public** endpoint (no auth required).
+  - Returns the Cognito configuration the API is using:
+    - `region`, `userPoolId`, `clientId`, `issuer`, `jwksUri`.
+  - Useful for debugging and for verifying that the backend is pointed at the expected user pool.
+
+To use these with Swagger:
+
+1. Obtain an **access token** from Cognito (e.g. via the Hosted UI from the web app).
+2. In Swagger (`/docs`), click **Authorize**, select the bearer scheme, and paste the token.
+3. Call `GET /auth/me` to verify the token is accepted.
+
+### 7. Frontend applications (separate repos)
+
+This backend monorepo does **not** contain the web or mobile UI code.
+
+Frontend projects live in their own repositories:
+- `leasebase-web` – web client
+- `leasebase-mobile` – mobile client
+
+Those repos are expected to talk to this backend API over HTTP (for example, `http://localhost:4000` in local development, or an AWS host in dev/stage/prod).
+
+### 8. Run API and frontend together locally
+
+A typical local workflow looks like:
+
+1. From this repo, start Postgres and the API:
+
+   ```bash path=null start=null
+   # In ../leasebase (backend monorepo)
+   docker-compose up -d db
+   npm install
+   npm run migrate
+   npm run seed
+   npm run dev:api
+   ```
+
+2. From `../leasebase-web`, start the web client (once implemented):
+
+   ```bash path=null start=null
+   cd ../leasebase-web
+   npm install
+   npm run dev
+   ```
+
+3. From `../leasebase-mobile`, start the mobile client (once implemented):
+
+   ```bash path=null start=null
+   cd ../leasebase-mobile
+   npm install
+   npm start
+   ```
+
+The web and mobile apps should be configured to use the API base URL exposed by this backend (e.g., `http://localhost:4000`).
 
 ---
 
@@ -177,103 +250,152 @@ npm run lint:web
 
 ---
 
-## Backend deployment to AWS (API service)
+## Backend deployment to AWS
 
 The backend API lives in `services/api` and uses:
 - NestJS (HTTP server)
 - Prisma (PostgreSQL ORM)
 - PostgreSQL (`DATABASE_URL`)
+- AWS Cognito for authentication (see **Authentication** section above)
 
-There is currently **no fully wired Terraform or CI/CD pipeline** in this repo. The steps below describe a **straightforward manual deployment** path using EC2 + RDS, which you can later automate with Terraform under `infra/`.
+### Infrastructure layout
 
-### 1. Create a PostgreSQL database (RDS)
+This repository now contains **bootstrap-only** Terraform under:
 
-In AWS:
+- `infra/terraform/bootstrap` – used to bootstrap AWS accounts (e.g., IAM roles, GitHub OIDC provider, and other shared prerequisites).
 
-1. Create an **RDS PostgreSQL** instance (e.g., `db.t3.micro` for dev):
-   - Engine: PostgreSQL 14+ (or similar)
-   - Public accessibility: for dev you may allow, but for prod prefer private subnets.
-2. Create a database user and database (e.g., `leasebase` / `leasebase`).
-3. Note the connection parameters and construct `DATABASE_URL`, for example:
+The **full application infrastructure** (VPC, RDS, ECS/Fargate services, ALB, S3/CloudFront for web, etc.) is defined in the separate **`leasebase-iac`** repository. That repo is the source of truth for environment-specific stacks (dev/QA/prod).
 
-```text path=null start=null
-postgresql://<USER>:<PASSWORD>@<RDS_ENDPOINT>:5432/<DB_NAME>?schema=public
-```
+Each environment is expected to run in its **own AWS account**. You select the account via AWS credentials or `AWS_PROFILE` when running Terraform in `leasebase-iac`.
 
-### 2. Provision an EC2 instance for the API
+### 1. Overview of what Terraform creates
 
-1. Create an **EC2 instance** (e.g., Amazon Linux 2, t3.micro or larger) in the same VPC as RDS.
-2. Open a security group rule allowing inbound traffic on the API port (default `4000`), from:
-   - Your IP (for dev), or
-   - An Application Load Balancer (for prod).
-3. SSH into the instance and install runtime dependencies:
+For each environment (dev, QA, prod), Terraform provisions:
 
-```bash path=null start=null
-# Update packages
-sudo yum update -y
+- Networking
+  - A VPC with environment-specific CIDR (e.g., `10.10.0.0/16` for dev, `10.20.0.0/16` for QA, `10.30.0.0/16` for prod)
+  - Two public subnets and an internet gateway
+- Database (backend)
+  - A PostgreSQL RDS instance (size and storage vary by env)
+- Backend API
+  - ECS Fargate cluster, task definition, and service
+  - Application Load Balancer (ALB) with HTTP listener and health checks
+- Web frontend
+  - S3 bucket for static assets
+  - CloudFront distribution in front of the S3 bucket
 
-# Install Node.js (use Node 18 or 20)
-# Example using nvm or Amazon Linux extras, depending on your base image
+The web and mobile repos then point at the appropriate API + web endpoints for each environment.
 
-# Install git
-sudo yum install -y git
-```
+### 2. Deploy dev environment
 
-### 3. Deploy the API code to EC2
-
-On the EC2 instance:
+From the backend repo:
 
 ```bash path=null start=null
-# Clone the repository
-git clone <your-git-url>/leasebase.git
-cd leasebase
+cd infra/terraform/envs/dev
 
-# Install dependencies
-npm install
+# Select the dev AWS account
+export AWS_PROFILE=leasebase-dev
 
-# Build the API
-cd services/api
-npm run build
-```
+# Required sensitive values (example: use tfvars or env vars in practice)
+export TF_VAR_db_password="<dev-db-password>"
+export TF_VAR_api_database_url="postgresql://leasebase:<dev-db-password>@<dev-rds-endpoint>:5432/leasebase_dev?schema=public"
 
-Create a `.env` file in `services/api` with at least:
+# Non-sensitive values
+export TF_VAR_api_container_image="<dev-api-ecr-uri>:latest"
+export TF_VAR_web_bucket_suffix="dev-<account-id-or-unique>"
 
-```bash path=null start=null
-DATABASE_URL="postgresql://<USER>:<PASSWORD>@<RDS_ENDPOINT>:5432/<DB_NAME>?schema=public"
-API_PORT=4000
-NODE_ENV=production
-```
-
-Then start the API:
-
-```bash path=null start=null
-npm start   # runs: node dist/main.js
-```
-
-For production, you should run this under a process manager such as **pm2** or a **systemd** service so that it restarts automatically.
-
-### 4. (Optional) Put an Application Load Balancer (ALB) in front
-
-For a more production-ready setup:
-
-1. Create an **Application Load Balancer** targeting the EC2 instance on port `4000`.
-2. Attach an **HTTPS listener** and ACM-managed certificate for your API domain (e.g., `api.yourdomain.com`).
-3. Restrict security groups so that the EC2 instance only accepts traffic from the ALB, not the entire internet.
-
-### 5. Future: Infrastructure as Code (Terraform)
-
-The `infra/terraform` directory is reserved for a Terraform-based implementation of the target architecture (VPC, ECS/Fargate or EC2, RDS, ALB, CloudFront, S3, Cognito, etc.), as described in `docs/architecture.md`.
-
-Once Terraform modules and variables are defined, the high-level flow will be:
-
-```bash path=null start=null
-cd infra/terraform
 terraform init
-terraform plan -var-file=env/dev.tfvars
-terraform apply -var-file=env/dev.tfvars
+terraform plan
+terraform apply
 ```
 
-(Those files and modules are **not yet committed**, so treat this as a roadmap, not a currently-working command.)
+After apply completes, Terraform outputs (among others):
+
+- `api_alb_dns_name` – base URL for the API in this environment
+- `web_cloudfront_domain` – CloudFront domain serving the web client
+
+Use these in `leasebase-web` and `leasebase-mobile` as the base URLs for dev.
+
+### 3. Deploy QA and production environments
+
+Repeat the same pattern in the QA and prod env folders, using the correct AWS account/profile and values:
+
+```bash path=null start=null
+# QA
+cd infra/terraform/envs/qa
+export AWS_PROFILE=leasebase-qa
+# Set TF_VAR_db_password, TF_VAR_api_database_url, TF_VAR_api_container_image, TF_VAR_web_bucket_suffix
+terraform init
+terraform apply
+
+# Production
+cd ../prod
+export AWS_PROFILE=leasebase-prod
+# Set TF_VAR_db_password, TF_VAR_api_database_url, TF_VAR_api_container_image, TF_VAR_web_bucket_suffix
+terraform init
+terraform apply
+```
+
+Environment-specific `variables.tf` files in each folder control sizes (RDS instance class, storage, ECS task counts) and can be tuned independently for dev, QA, and prod.
+
+### 4. Deploying new API/web versions
+
+Once the infrastructure is in place:
+
+- **Backend API:**
+  - Build and push a new Docker image for `services/api` to ECR.
+  - Update `TF_VAR_api_container_image` (or the corresponding value in your CI pipeline) and re-run `terraform apply`, or
+  - Use a deployment tool that updates the ECS service to point at the new task definition.
+
+- **Web frontend:**
+  - In `leasebase-web`, build the static site and sync it to the S3 bucket output by Terraform (for each env):
+
+    ```bash path=null start=null
+    # In ../leasebase-web
+    npm run build
+    aws s3 sync ./out s3://<web_bucket_name-from-terraform>/ --delete
+    ```
+
+  - The CloudFront distribution created by Terraform serves the updated assets; you can add cache invalidation as needed.
+
+### 5. CI/CD Automated Deployments
+
+This repository includes GitHub Actions workflows for automated deployments:
+
+- **Development** (`Develop` branch → Dev AWS account)
+  - Workflow: `.github/workflows/deploy-develop.yml`
+  - Triggers on push to `Develop` branch
+  - Deploys to dev ECS cluster with Fargate Spot (cost optimized)
+
+- **Production** (`release` branch → Prod AWS account)
+  - Workflow: `.github/workflows/deploy-production.yml`
+  - Triggers on push to `release` branch
+  - Deploys to prod ECS cluster with Fargate (high availability)
+
+#### GitHub Secrets Required
+
+For **Development** environment:
+- `AWS_DEV_ROLE_ARN` – IAM role ARN from `terraform output github_actions_role_arn`
+- `AWS_DEV_SUBNETS` – Subnet IDs from `terraform output public_subnet_ids`
+- `AWS_DEV_SECURITY_GROUP` – Security group from `terraform output ecs_security_group_id`
+
+For **Production** environment:
+- `AWS_PROD_ROLE_ARN` – IAM role ARN from `terraform output github_actions_role_arn`
+- `AWS_PROD_SUBNETS` – Subnet IDs from `terraform output private_subnet_ids`
+- `AWS_PROD_SECURITY_GROUP` – Security group from `terraform output ecs_security_group_id`
+
+#### GitHub Environments
+
+Create two environments in GitHub repository settings:
+1. `development` – No protection rules required
+2. `production` – Recommended: require reviewers for deployment approval
+
+#### OIDC Authentication
+
+The workflows use GitHub OIDC for AWS authentication (no long-lived credentials). The Terraform configuration creates:
+- OIDC identity provider in each AWS account
+- IAM role with trust policy for GitHub Actions
+- Least-privilege permissions for ECR, ECS, S3, and CloudFront
 
 ---
 
@@ -281,7 +403,7 @@ terraform apply -var-file=env/dev.tfvars
 
 The `multi_agent/` directory contains a generic multi-agent engine plus a Leasebase-specific CLI wrapper.
 
-From the monorepo root you can ask the multi-agent system to decompose and reason about tasks across web, mobile, and backend:
+From the backend monorepo root you can ask the multi-agent system to decompose and reason about tasks across backend, web, and mobile **as separate repos**:
 
 ```bash path=null start=null
 npm run multi-agent -- "Design the MVP tenant onboarding flow across web, mobile, and backend" --domain all

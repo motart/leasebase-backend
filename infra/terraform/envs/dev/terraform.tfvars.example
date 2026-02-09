@@ -1,0 +1,21 @@
+# Copy this file to terraform.tfvars and fill in the values
+# DO NOT commit terraform.tfvars to version control
+
+aws_region         = "us-east-1"
+vpc_cidr           = "10.10.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+db_username = "leasebase"
+db_password = "CHANGE_ME_STRONG_PASSWORD"
+
+# Leave empty for initial deployment, then set after RDS is created
+database_url = ""
+
+# Leave empty to use ECR repository
+api_container_image = ""
+
+# Must be globally unique
+web_bucket_suffix = "YOUR_ACCOUNT_ID"
+
+# GitHub repository for OIDC
+github_repo = "motart/leasebase-backend"
