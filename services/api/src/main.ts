@@ -11,12 +11,20 @@ async function bootstrap() {
 
   app.use(helmet());
   app.use(cookieParser());
-  app.enableCors({ origin: true, credentials: true });
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:3000'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: false,
+  });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   const config = new DocumentBuilder()
     .setTitle('Leasebase API')
-    .setDescription('REST API for Leasebase property management SaaS')
+.setDescription(
+      'Backend API for Leasebase. Authentication is handled by AWS Cognito; this API does not issue tokens or register users. '
+      + 'Obtain an access token via the Cognito Hosted UI and supply it as Authorization: Bearer <token> to call protected endpoints such as /auth/me.',
+    )
     .setVersion('0.1.0')
     .addBearerAuth({ type: 'http', scheme: 'bearer' }, 'access-token')
     .build();

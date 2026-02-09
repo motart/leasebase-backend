@@ -24,7 +24,7 @@ This repo is intentionally **backend‑only**. Frontend projects live in their o
 - `services/`
   - `services/api/` – NestJS API using Prisma and PostgreSQL (the main backend service)
 - `infra/`
-  - `infra/terraform/` – Terraform infrastructure-as-code for dev/QA/prod AWS accounts (VPC, RDS, ECS/Fargate API, ALB, S3+CloudFront for web)
+  - `infra/terraform/bootstrap` – Terraform for bootstrapping AWS accounts (IAM roles, OIDC for GitHub Actions, basic shared resources). Full app infrastructure (VPC, RDS, ECS/Fargate, ALB, S3/CloudFront, etc.) now lives in the separate `leasebase-iac` repo.
 - `docs/`
   - `docs/architecture.md` – High-level system and domain architecture
 - `multi_agent/`
@@ -122,7 +122,64 @@ This runs NestJS from `services/api`, listening on:
 Swagger API docs are exposed at:
 - `http://localhost:4000/docs`
 
-### 6. Frontend applications (separate repos)
+### 6. Authentication (AWS Cognito)
+
+The backend API uses **AWS Cognito** for authentication from the start. It does **not** issue tokens or handle user registration itself; instead it validates **Cognito access tokens** sent as Bearer tokens.
+
+#### Required environment variables
+
+In `services/api` (or the shell where you run the API), set:
+
+```bash path=null start=null
+COGNITO_REGION=us-west-2                # or your region
+COGNITO_USER_POOL_ID=us-west-2_XXXXXXX  # Cognito User Pool ID
+COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxx  # App client ID for web
+```
+
+These are used to construct the expected JWT **issuer** and **JWKS** URL:
+
+- Issuer: `https://cognito-idp.${COGNITO_REGION}.amazonaws.com/${COGNITO_USER_POOL_ID}`
+- JWKS: `${issuer}/.well-known/jwks.json`
+
+The API verifies incoming Bearer tokens against this JWKS and checks the `aud` (audience) claim matches `COGNITO_CLIENT_ID`.
+
+#### Dev-only auth bypass (for tests only)
+
+For certain local or test scenarios you can enable a **dev-only** auth bypass. This is **disabled by default** and must never be used in production.
+
+```bash path=null start=null
+DEV_AUTH_BYPASS=true
+```
+
+When this flag is set, you can simulate an authenticated user via headers:
+
+- `x-dev-user-email` – user email
+- `x-dev-user-role` – one of `ORG_ADMIN | PM_STAFF | OWNER | TENANT`
+- `x-dev-org-id` – organization id
+
+The backend will upsert a matching `Organization` + `User` record and treat that as the current user. When `DEV_AUTH_BYPASS` is not `true`, these headers are ignored and a real Cognito token is required.
+
+#### Auth endpoints
+
+- `GET /auth/me`
+  - Protected endpoint (requires Bearer token).
+  - Returns the normalized current user:
+    - `id`, `orgId`, `email`, `name`, `role`.
+  - Documented in Swagger as `CurrentUserDto` under the `auth` tag.
+
+- `GET /auth/config`
+  - **Public** endpoint (no auth required).
+  - Returns the Cognito configuration the API is using:
+    - `region`, `userPoolId`, `clientId`, `issuer`, `jwksUri`.
+  - Useful for debugging and for verifying that the backend is pointed at the expected user pool.
+
+To use these with Swagger:
+
+1. Obtain an **access token** from Cognito (e.g. via the Hosted UI from the web app).
+2. In Swagger (`/docs`), click **Authorize**, select the bearer scheme, and paste the token.
+3. Call `GET /auth/me` to verify the token is accepted.
+
+### 7. Frontend applications (separate repos)
 
 This backend monorepo does **not** contain the web or mobile UI code.
 
@@ -132,7 +189,7 @@ Frontend projects live in their own repositories:
 
 Those repos are expected to talk to this backend API over HTTP (for example, `http://localhost:4000` in local development, or an AWS host in dev/stage/prod).
 
-### 7. Run API and frontend together locally
+### 8. Run API and frontend together locally
 
 A typical local workflow looks like:
 
@@ -193,21 +250,23 @@ npm run lint:web
 
 ---
 
-## Backend & web deployment to AWS (Terraform, per account)
+## Backend deployment to AWS
 
 The backend API lives in `services/api` and uses:
 - NestJS (HTTP server)
 - Prisma (PostgreSQL ORM)
 - PostgreSQL (`DATABASE_URL`)
+- AWS Cognito for authentication (see **Authentication** section above)
 
-Infrastructure for the backend API **and** the web frontend (S3 + CloudFront) is managed via Terraform under:
+### Infrastructure layout
 
-- `infra/terraform/envs/common` – shared stack for VPC, RDS, ECS/Fargate API, ALB, S3 + CloudFront
-- `infra/terraform/envs/dev` – dev account root module
-- `infra/terraform/envs/qa` – QA account root module
-- `infra/terraform/envs/prod` – production account root module
+This repository now contains **bootstrap-only** Terraform under:
 
-Each environment is expected to run in its **own AWS account**. You select the account via AWS credentials or `AWS_PROFILE` when running Terraform.
+- `infra/terraform/bootstrap` – used to bootstrap AWS accounts (e.g., IAM roles, GitHub OIDC provider, and other shared prerequisites).
+
+The **full application infrastructure** (VPC, RDS, ECS/Fargate services, ALB, S3/CloudFront for web, etc.) is defined in the separate **`leasebase-iac`** repository. That repo is the source of truth for environment-specific stacks (dev/QA/prod).
+
+Each environment is expected to run in its **own AWS account**. You select the account via AWS credentials or `AWS_PROFILE` when running Terraform in `leasebase-iac`.
 
 ### 1. Overview of what Terraform creates
 
