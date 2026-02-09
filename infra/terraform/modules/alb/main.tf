@@ -59,13 +59,16 @@ resource "aws_lb_target_group" "api" {
   health_check {
     enabled             = true
     healthy_threshold   = 2
-    unhealthy_threshold = 3
+    unhealthy_threshold = 2
     timeout             = 5
-    interval            = 30
+    interval            = var.environment == "prod" ? 30 : 10  # Faster checks for non-prod
     path                = var.health_check_path
     protocol            = "HTTP"
     matcher             = "200"
   }
+
+  # Reduce deregistration delay for faster deployments in non-prod
+  deregistration_delay = var.environment == "prod" ? 300 : 30
 
   tags = {
     Name        = "${var.project}-${var.environment}-api-tg"
