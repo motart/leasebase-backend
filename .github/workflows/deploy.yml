@@ -65,9 +65,10 @@ jobs:
           ECR_REPOSITORY="${ECR_REPOSITORY_PREFIX}-${ENV}-api"
           
           docker build \
+            -f services/api/Dockerfile \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
-            .
+            services/api
           
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
