@@ -6,11 +6,11 @@ export class CreateOrgDto {
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @ApiProperty({ enum: OrganizationType })
   @IsEnum(OrganizationType)
-  type: OrganizationType;
+  type!: OrganizationType;
 
   @ApiProperty({ required: false, default: 'basic' })
   @IsOptional()
@@ -19,7 +19,7 @@ export class CreateOrgDto {
 
   @ApiProperty()
   @IsEmail()
-  adminEmail: string;
+  adminEmail!: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -30,16 +30,16 @@ export class CreateOrgDto {
 export class CreateOrgUserDto {
   @ApiProperty()
   @IsEmail()
-  email: string;
+  email!: string;
 
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @ApiProperty({ enum: UserRole })
   @IsEnum(UserRole)
-  role: UserRole;
+  role!: UserRole;
 }
 
 export class UpdateOrgUserDto {

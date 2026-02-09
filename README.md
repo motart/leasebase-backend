@@ -299,6 +299,45 @@ Once the infrastructure is in place:
 
   - The CloudFront distribution created by Terraform serves the updated assets; you can add cache invalidation as needed.
 
+### 5. CI/CD Automated Deployments
+
+This repository includes GitHub Actions workflows for automated deployments:
+
+- **Development** (`Develop` branch → Dev AWS account)
+  - Workflow: `.github/workflows/deploy-develop.yml`
+  - Triggers on push to `Develop` branch
+  - Deploys to dev ECS cluster with Fargate Spot (cost optimized)
+
+- **Production** (`release` branch → Prod AWS account)
+  - Workflow: `.github/workflows/deploy-production.yml`
+  - Triggers on push to `release` branch
+  - Deploys to prod ECS cluster with Fargate (high availability)
+
+#### GitHub Secrets Required
+
+For **Development** environment:
+- `AWS_DEV_ROLE_ARN` – IAM role ARN from `terraform output github_actions_role_arn`
+- `AWS_DEV_SUBNETS` – Subnet IDs from `terraform output public_subnet_ids`
+- `AWS_DEV_SECURITY_GROUP` – Security group from `terraform output ecs_security_group_id`
+
+For **Production** environment:
+- `AWS_PROD_ROLE_ARN` – IAM role ARN from `terraform output github_actions_role_arn`
+- `AWS_PROD_SUBNETS` – Subnet IDs from `terraform output private_subnet_ids`
+- `AWS_PROD_SECURITY_GROUP` – Security group from `terraform output ecs_security_group_id`
+
+#### GitHub Environments
+
+Create two environments in GitHub repository settings:
+1. `development` – No protection rules required
+2. `production` – Recommended: require reviewers for deployment approval
+
+#### OIDC Authentication
+
+The workflows use GitHub OIDC for AWS authentication (no long-lived credentials). The Terraform configuration creates:
+- OIDC identity provider in each AWS account
+- IAM role with trust policy for GitHub Actions
+- Least-privilege permissions for ECR, ECS, S3, and CloudFront
+
 ---
 
 ## Multi-agent tooling
