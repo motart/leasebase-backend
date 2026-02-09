@@ -2,9 +2,9 @@
 # Copy to prod.tfvars and apply with: terraform apply -var-file=prod.tfvars
 
 environment        = "prod"
-aws_region         = "us-east-1"
+aws_region         = "us-west-1"
 vpc_cidr           = "10.30.0.0/16"
-availability_zones = ["us-east-1a", "us-east-1b"]
+availability_zones = ["us-west-1a", "us-west-1b"]
 
 # NAT Gateway enabled for prod (ECS tasks in private subnets)
 enable_nat_gateway = true

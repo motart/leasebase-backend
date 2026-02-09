@@ -12,7 +12,7 @@ terraform {
   # backend "s3" {
   #   bucket         = "leasebase-terraform-state-dev"
   #   key            = "dev/terraform.tfstate"
-  #   region         = "us-east-1"
+  #   region         = "us-west-1"
   #   encrypt        = true
   #   dynamodb_table = "leasebase-terraform-locks-dev"
   # }

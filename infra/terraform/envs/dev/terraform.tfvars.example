@@ -1,9 +1,9 @@
 # Copy this file to terraform.tfvars and fill in the values
 # DO NOT commit terraform.tfvars to version control
 
-aws_region         = "us-east-1"
+aws_region         = "us-west-1"
 vpc_cidr           = "10.10.0.0/16"
-availability_zones = ["us-east-1a", "us-east-1b"]
+availability_zones = ["us-west-1a", "us-west-1b"]
 
 db_username = "leasebase"
 db_password = "CHANGE_ME_STRONG_PASSWORD"
