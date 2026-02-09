@@ -3,7 +3,7 @@ name: Deploy to Development
 on:
   push:
     branches:
-      - Develop
+      - develop
 
 env:
   AWS_REGION: us-west-1
