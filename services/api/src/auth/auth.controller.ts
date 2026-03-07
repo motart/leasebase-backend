@@ -27,9 +27,14 @@ export class AuthController {
   @Get('me')
   @ApiOperation({ summary: 'Get current authenticated user info from Cognito token' })
   @ApiOkResponse({ type: CurrentUserDto })
-  me(@CurrentUserDecorator() user: CurrentUser): CurrentUserDto {
-    // Shape of CurrentUser matches CurrentUserDto
-    return user as CurrentUserDto;
+  async me(@CurrentUserDecorator() user: CurrentUser) {
+    const onboarding = await this.authService.getOnboardingStatus(user);
+    return {
+      ...(user as CurrentUserDto),
+      onboardingComplete: onboarding?.completedAt != null,
+      onboardingStep: onboarding?.currentStep ?? null,
+      walkthroughDismissed: onboarding?.walkthroughDismissed ?? true,
+    };
   }
 
   @Public()

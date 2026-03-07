@@ -13,7 +13,7 @@ import {
   ResendConfirmationCodeCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
+import { RegisterDto, RegisterUserType } from './dto/register.dto';
 import { AuthResponseDto, RegisterResponseDto } from './dto/auth-response.dto';
 
 @Injectable()
@@ -204,18 +204,80 @@ export class AuthService {
     }
 
     try {
+      // Map userType to Cognito custom attributes and internal role
+      const userType = dto.userType || RegisterUserType.TENANT;
+      const orgType = userType === RegisterUserType.OWNER
+        ? OrganizationType.LANDLORD
+        : OrganizationType.PM_COMPANY;
+      const userRole = userType === RegisterUserType.OWNER
+        ? UserRole.OWNER
+        : userType === RegisterUserType.PROPERTY_MANAGER
+          ? UserRole.ORG_ADMIN
+          : UserRole.TENANT;
+
+      // Step 1: Create org + user in DB (for non-tenant registrations)
+      let orgId = '';
+      let userId = '';
+      if (userType !== RegisterUserType.TENANT) {
+        const fullName = `${dto.firstName} ${dto.lastName}`.trim();
+        const orgName = dto.companyName || `${fullName}'s Organization`;
+        const org = await this.prisma.organization.create({
+          data: {
+            type: orgType,
+            name: orgName,
+            plan: 'basic',
+          },
+        });
+        orgId = org.id;
+
+        const user = await this.prisma.user.create({
+          data: {
+            organizationId: org.id,
+            email: dto.email,
+            name: fullName,
+            role: userRole,
+          },
+        });
+        userId = user.id;
+
+        // Create onboarding progress
+        await this.prisma.onboardingProgress.create({
+          data: {
+            userId: user.id,
+            organizationId: org.id,
+            orgCreated: true,
+            currentStep: 'add_property',
+          },
+        });
+      }
+
+      // Step 2: Register with Cognito
+      const userAttributes = [
+        { Name: 'email', Value: dto.email },
+        { Name: 'given_name', Value: dto.firstName },
+        { Name: 'family_name', Value: dto.lastName },
+      ];
+      if (orgId) {
+        userAttributes.push({ Name: 'custom:orgId', Value: orgId });
+        userAttributes.push({ Name: 'custom:role', Value: userRole });
+      }
+
       const command = new SignUpCommand({
         ClientId: clientId,
         Username: dto.email,
         Password: dto.password,
-        UserAttributes: [
-          { Name: 'email', Value: dto.email },
-          { Name: 'given_name', Value: dto.firstName },
-          { Name: 'family_name', Value: dto.lastName },
-        ],
+        UserAttributes: userAttributes,
       });
 
       const response = await this.cognitoClient.send(command);
+
+      // Step 3: Link Cognito sub to DB user
+      if (userId && response.UserSub) {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { cognitoSub: response.UserSub },
+        });
+      }
 
       return {
         userConfirmed: response.UserConfirmed ?? false,
@@ -271,6 +333,12 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  async getOnboardingStatus(user: CurrentUser) {
+    return this.prisma.onboardingProgress.findUnique({
+      where: { userId: user.id },
+    });
   }
 
   async resendConfirmationCode(email: string): Promise<{ message: string }> {

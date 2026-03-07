@@ -58,6 +58,23 @@ enum WorkOrderPriority {
   HIGH
 }
 
+enum PropertyType {
+  SINGLE_FAMILY
+  MULTI_FAMILY
+  DUPLEX
+  CONDO
+  TOWNHOUSE
+  COMMERCIAL
+  OTHER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
 enum SubscriptionStatus {
   ACTIVE
   PAST_DUE
@@ -84,6 +101,8 @@ model Organization {
   documents            Document[]
   auditLogs            AuditLog[]
   subscription         Subscription?
+  onboardingProgress   OnboardingProgress[]
+  invitations          Invitation[]
 
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
@@ -101,6 +120,8 @@ model User {
   status             String             @default("ACTIVE")
 
   tenantProfile      TenantProfile?
+  onboardingProgress OnboardingProgress?
+  sentInvitations    Invitation[]       @relation("InvitationSentBy")
   workOrdersAssigned WorkOrder[]        @relation("WorkOrderAssignee")
   workOrdersCreated  WorkOrder[]        @relation("WorkOrderCreatedBy")
   tenantWorkOrders   WorkOrder[]        @relation("WorkOrderTenantUser")
@@ -121,15 +142,18 @@ model Property {
   organization    Organization  @relation(fields: [organizationId], references: [id])
 
   name            String
+  propertyType    PropertyType  @default(OTHER)
   addressLine1    String
   addressLine2    String?
   city            String
   state           String
   postalCode      String
   country         String        @default("US")
+  numberOfUnits   Int           @default(1)
   status          String        @default("ACTIVE")
 
   units           Unit[]
+  invitations     Invitation[]
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -150,10 +174,12 @@ model Unit {
   bathrooms       Float
   squareFeet      Int?
   rentAmount      Int           // cents
+  securityDeposit Int?          // cents
   status          String        @default("AVAILABLE")
 
   leases          Lease[]
   workOrders      WorkOrder[]
+  invitations     Invitation[]
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -192,8 +218,8 @@ model TenantProfile {
   userId    String   @unique
   user      User     @relation(fields: [userId], references: [id])
 
-  leaseId   String
-  lease     Lease    @relation(fields: [leaseId], references: [id])
+  leaseId   String?
+  lease     Lease?   @relation(fields: [leaseId], references: [id])
 
   phone     String?
 
@@ -348,4 +374,57 @@ model Subscription {
 
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
+}
+
+model OnboardingProgress {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id])
+  organizationId        String
+  organization          Organization @relation(fields: [organizationId], references: [id])
+
+  walkthroughDismissed  Boolean   @default(false)
+  orgCreated            Boolean   @default(false)
+  firstPropertyAdded    Boolean   @default(false)
+  unitsConfigured       Boolean   @default(false)
+  tenantsInvited        Boolean   @default(false)
+  currentStep           String    @default("welcome")
+  completedAt           DateTime?
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([organizationId])
+}
+
+model Invitation {
+  id              String           @id @default(cuid())
+  organizationId  String
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+
+  email           String
+  firstName       String?
+  lastName        String?
+  phone           String?
+  token           String           @unique @default(cuid())
+  role            UserRole         @default(TENANT)
+  status          InvitationStatus @default(PENDING)
+
+  propertyId      String?
+  property        Property?        @relation(fields: [propertyId], references: [id])
+  unitId          String?
+  unit            Unit?            @relation(fields: [unitId], references: [id])
+
+  invitedByUserId String
+  invitedByUser   User             @relation("InvitationSentBy", fields: [invitedByUserId], references: [id])
+
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([token])
 }

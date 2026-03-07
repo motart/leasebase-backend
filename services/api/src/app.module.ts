@@ -9,8 +9,11 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HealthModule } from './health/health.module';
 import { OrgsModule } from './organizations/orgs.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 import { PropertiesModule } from './properties/properties.module';
 import { LeasesModule } from './leases/leases.module';
+import { TenantsModule } from './tenants/tenants.module';
+import { InvitationsModule } from './invitations/invitations.module';
 import { PaymentsModule } from './payments/payments.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
 import { DocumentsModule } from './documents/documents.module';
@@ -31,8 +34,11 @@ import { AuditModule } from './audit/audit.module';
     AuthModule,
     HealthModule,
     OrgsModule,
+    OnboardingModule,
     PropertiesModule,
     LeasesModule,
+    TenantsModule,
+    InvitationsModule,
     PaymentsModule,
     MaintenanceModule,
     DocumentsModule,
