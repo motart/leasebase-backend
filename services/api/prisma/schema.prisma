@@ -84,6 +84,7 @@ model Organization {
   documents            Document[]
   auditLogs            AuditLog[]
   subscription         Subscription?
+  managerAssignments   ManagerPropertyAssignment[]
 
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
@@ -107,6 +108,7 @@ model User {
   workOrderComments  WorkOrderComment[] @relation("WorkOrderCommentAuthor")
   auditLogs          AuditLog[]         @relation("AuditActor")
   documents          Document[]
+  managerAssignments ManagerPropertyAssignment[]
 
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
@@ -130,6 +132,7 @@ model Property {
   status          String        @default("ACTIVE")
 
   units           Unit[]
+  managerAssignments ManagerPropertyAssignment[]
 
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -334,6 +337,27 @@ model AuditLog {
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
+}
+
+model ManagerPropertyAssignment {
+  id              String        @id @default(cuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+
+  propertyId      String
+  property        Property      @relation(fields: [propertyId], references: [id])
+
+  status          String        @default("ACTIVE")
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([organizationId, userId, propertyId])
+  @@index([organizationId, userId])
+  @@index([organizationId, propertyId])
 }
 
 model Subscription {
